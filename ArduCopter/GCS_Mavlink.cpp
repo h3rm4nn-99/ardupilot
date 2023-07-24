@@ -557,6 +557,9 @@ static const ap_message STREAM_EXTRA3_msgs[] = {
 #if HAL_EFI_ENABLED
     MSG_EFI_STATUS,
 #endif
+    MSG_KEYEXCHANGE,
+    MSG_KEYEXCHANGEGCSACK,
+    MSG_CAPSULE
 };
 static const ap_message STREAM_PARAMS_msgs[] = {
     MSG_NEXT_PARAM

@@ -87,5 +87,9 @@ enum ap_message : uint8_t {
     MSG_ATTITUDE_TARGET,
     MSG_HYGROMETER,
     MSG_AUTOPILOT_STATE_FOR_GIMBAL_DEVICE,
+    // new messages as defined in mavlink's message_definitions
+    MSG_KEYEXCHANGE,
+    MSG_KEYEXCHANGEGCSACK,
+    MSG_CAPSULE,
     MSG_LAST // MSG_LAST must be the last entry in this enum
 };
