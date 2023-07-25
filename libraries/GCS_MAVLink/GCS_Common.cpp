@@ -1036,7 +1036,9 @@ ap_message GCS_MAVLINK::mavlink_id_to_ap_message_id(const uint32_t mavlink_id) c
 #if HAL_ADSB_ENABLED
         { MAVLINK_MSG_ID_UAVIONIX_ADSB_OUT_STATUS, MSG_UAVIONIX_ADSB_OUT_STATUS},
 #endif
-            };
+        { MAVLINK_MSG_ID_KEYEXCHANGE, MSG_KEYEXCHANGE},    
+        { MAVLINK_MSG_ID_CAPSULE, MSG_CAPSULE}
+    };
 
     for (uint8_t i=0; i<ARRAY_SIZE(map); i++) {
         if (map[i].mavlink_id == mavlink_id) {
