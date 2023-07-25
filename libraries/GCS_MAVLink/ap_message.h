@@ -91,5 +91,6 @@ enum ap_message : uint8_t {
     MSG_KEYEXCHANGE,
     MSG_KEYEXCHANGEGCSACK,
     MSG_CAPSULE,
+    MSG_CAPSULEACK,
     MSG_LAST // MSG_LAST must be the last entry in this enum
 };
