@@ -2806,6 +2806,14 @@ void GCS_MAVLINK::send_heartbeat() const
         system_status());
 }
 
+void GCS_MAVLINK::send_keyexchange() const {
+    return;
+}
+
+void GCS_MAVLINK::send_capsule() const {
+    return;
+}
+
 MAV_RESULT GCS_MAVLINK::handle_command_do_aux_function(const mavlink_command_long_t &packet)
 {
     if (packet.param2 > 2) {

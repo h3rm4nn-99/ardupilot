@@ -331,6 +331,8 @@ public:
 
     // common send functions
     void send_heartbeat(void) const;
+    void send_keyexchange(void) const;
+    void send_capsule(void) const;
     void send_meminfo(void);
     void send_fence_status() const;
     void send_power_status(void);
@@ -510,6 +512,9 @@ protected:
     AP_Int16        *streamRates;
 
     void handle_heartbeat(const mavlink_message_t &msg) const;
+
+    void handle_keyexchangegcs(const mavlink_message_t &msg) const;
+    void handle_capsuleack(const mavlink_message_t &msg) const;
 
     virtual bool persist_streamrates() const { return false; }
     void handle_request_data_stream(const mavlink_message_t &msg);
