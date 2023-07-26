@@ -64,6 +64,7 @@
 #include "MissionItemProtocol_Fence.h"
 
 #include <stdio.h>
+#include <oqs/oqs.h>
 
 #if HAL_RCINPUT_WITH_AP_RADIO
 #include <AP_Radio/AP_Radio.h>
@@ -105,6 +106,24 @@ GCS *GCS::_singleton = nullptr;
 
 GCS_MAVLINK_InProgress GCS_MAVLINK_InProgress::in_progress_tasks[1];
 uint32_t GCS_MAVLINK_InProgress::last_check_ms;
+
+// these global variables are added during the customization process
+
+bool should_send_capsule;
+bool key_exchange_complete;
+
+uint8_t read_key_start;
+uint8_t read_key_end;
+
+uint8_t remote_key[OQS_KEM_kyber_512_length_public_key];
+uint8_t private_key[OQS_KEM_kyber_512_length_secret_key];
+uint8_t shared_secret[OQS_KEM_kyber_512_length_shared_secret];
+
+bool is_public_key_read = false;
+bool is_secret_key_read = false;
+bool is_shared_secret_established = false;
+
+// end of custom global variables
 
 GCS_MAVLINK::GCS_MAVLINK(GCS_MAVLINK_Parameters &parameters,
                          AP_HAL::UARTDriver &uart)
@@ -5634,6 +5653,16 @@ bool GCS_MAVLINK::try_send_message(const enum ap_message id)
     case MSG_ATTITUDE:
         CHECK_PAYLOAD_SIZE(ATTITUDE);
         send_attitude();
+        break;
+    
+    case MSG_KEYEXCHANGE:
+        CHECK_PAYLOAD_SIZE(KEYEXCHANGE);
+        send_keyexchange();
+        break;
+
+    case MSG_CAPSULE:
+        CHECK_PAYLOAD_SIZE(CAPSULE);
+        send_capsule();
         break;
 
     case MSG_ATTITUDE_QUATERNION:
