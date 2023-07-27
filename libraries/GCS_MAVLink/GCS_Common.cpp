@@ -109,19 +109,26 @@ uint32_t GCS_MAVLINK_InProgress::last_check_ms;
 
 // these global variables are added during the customization process
 
-bool should_send_capsule;
-bool key_exchange_complete;
+bool should_send_capsule = false;
+bool key_exchange_complete = false;
+bool key_sent = false;
 
-uint8_t read_key_start;
-uint8_t read_key_end;
+uint8_t read_remote_key_start = 0;
+uint8_t read_remote_key_end = 199;
+
+uint8_t read_device_public_key_start = 0; // included
+uint8_t read_device_public_key_end = 200; // not included
 
 uint8_t remote_key[OQS_KEM_kyber_512_length_public_key];
 uint8_t private_key[OQS_KEM_kyber_512_length_secret_key];
-uint8_t shared_secret[OQS_KEM_kyber_512_length_shared_secret];
+uint8_t device_public_key[OQS_KEM_kyber_512_length_public_key];
+uint8_t capsule[OQS_KEM_kyber_512_length_ciphertext];
 
-bool is_public_key_read = false;
+bool is_remote_key_read = false;
 bool is_secret_key_read = false;
-bool is_shared_secret_established = false;
+bool is_device_public_key_read = false;
+
+short keyexchange_message_sequence_number = 1;
 
 // end of custom global variables
 
@@ -2826,7 +2833,39 @@ void GCS_MAVLINK::send_heartbeat() const
 }
 
 void GCS_MAVLINK::send_keyexchange() const {
-    return;
+    if (!is_device_public_key_read) {
+        FILE *public_key_file = fopen("public_key_uav.key", "rb");
+        if (public_key_file == NULL) {
+            printf("Error opening file. Exiting\n");
+            exit(-1);
+        } else {
+            if (fread(device_public_key, 800, sizeof(uint8_t), public_key_file) != OQS_KEM_kyber_512_length_public_key) {
+                printf("Error reading device public key. Exiting\n");
+                exit(-1);
+            }
+
+            is_device_public_key_read = true;
+        }
+    } else {
+        uint8_t chunk[200];
+        int chunk_index = 0;
+        for (int i = read_device_public_key_start; i < read_device_public_key_end; i++) {
+            chunk[chunk_index++] = device_public_key[i];
+        }
+
+        int chunk_start = read_device_public_key_start;
+        int chunk_end = read_device_public_key_end;
+
+        short more_data = (read_device_public_key_end == OQS_KEM_kyber_512_length_public_key) ? 0 : 1;
+
+        mavlink_msg_keyexchange_send(chan, 
+                                    keyexchange_message_sequence_number, 
+                                    chunk_start, 
+                                    chunk_end, 
+                                    more_data, 
+                                    chunk);
+        
+    }
 }
 
 void GCS_MAVLINK::send_capsule() const {
