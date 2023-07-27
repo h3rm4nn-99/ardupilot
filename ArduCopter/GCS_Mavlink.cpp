@@ -558,9 +558,7 @@ static const ap_message STREAM_EXTRA3_msgs[] = {
     MSG_EFI_STATUS,
 #endif
     MSG_KEYEXCHANGE,
-    MSG_KEYEXCHANGEGCSACK,
     MSG_CAPSULE,
-    MSG_CAPSULEACK
 };
 static const ap_message STREAM_PARAMS_msgs[] = {
     MSG_NEXT_PARAM
