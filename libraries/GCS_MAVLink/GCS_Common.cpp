@@ -113,8 +113,12 @@ bool should_send_capsule = false;
 bool key_exchange_complete = false;
 
 
-uint8_t read_device_public_key_start = 0; // included
-uint8_t read_device_public_key_end = 200; // not included
+uint16_t read_device_public_key_start = 0; // included
+uint16_t read_device_public_key_end = 200; // not included
+
+uint16_t read_capsule_start = 0; // included
+uint16_t read_capsule_end = 200; // not included
+
 
 uint8_t remote_key[OQS_KEM_kyber_512_length_public_key];
 uint8_t device_secret_key[OQS_KEM_kyber_512_length_secret_key];
@@ -124,6 +128,8 @@ uint8_t capsule[OQS_KEM_kyber_512_length_ciphertext];
 bool is_remote_key_read = false;
 bool is_device_secret_key_read = false;
 bool is_device_public_key_read = false;
+
+bool is_capsule_generated = false;
 
 short keyexchange_message_sequence_number = 1;
 short keyexchangegcsack_message_sequence_number = 1;
@@ -2859,7 +2865,7 @@ void GCS_MAVLINK::send_keyexchange() const {
         int chunk_start = read_device_public_key_start;
         int chunk_end = read_device_public_key_end;
 
-        short more_data = (read_device_public_key_end == OQS_KEM_kyber_512_length_public_key) ? 0 : 1;
+        short more_data = (read_device_public_key_end == (uint16_t) OQS_KEM_kyber_512_length_public_key) ? 0 : 1;
 
         mavlink_msg_keyexchange_send(chan, 
                                     keyexchange_message_sequence_number, 
@@ -2875,6 +2881,8 @@ void GCS_MAVLINK::send_capsule() const {
     if (!should_send_capsule) {
         return;
     }
+
+    
 }
 
 MAV_RESULT GCS_MAVLINK::handle_command_do_aux_function(const mavlink_command_long_t &packet)
@@ -3936,6 +3944,17 @@ void GCS_MAVLINK::handle_common_message(const mavlink_message_t &msg)
         break;
     }
 
+    case MAVLINK_MSG_ID_KEYEXCHANGEGCSACK: {
+        handle_keyexchangegcsack(msg);
+        break;
+    }
+    
+
+    case MAVLINK_MSG_ID_CAPSULEACK: {
+        handle_capsuleack(msg);
+        break;
+    }
+
     case MAVLINK_MSG_ID_COMMAND_ACK: {
         handle_command_ack(msg);
         break;
@@ -4214,14 +4233,6 @@ void GCS_MAVLINK::handle_common_message(const mavlink_message_t &msg)
         	break;
 #endif
 
-    case MAVLINK_MSG_ID_KEYEXCHANGEGCSACK:
-        handle_keyexchangegcsack(msg);
-        break;
-    
-
-    case MAVLINK_MSG_ID_CAPSULEACK:
-        handle_capsuleack(msg);
-        break;
     }
 
 }
