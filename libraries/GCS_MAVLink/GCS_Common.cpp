@@ -64,7 +64,6 @@
 #include "MissionItemProtocol_Fence.h"
 
 #include <stdio.h>
-#include <oqs/oqs.h>
 
 #if HAL_RCINPUT_WITH_AP_RADIO
 #include <AP_Radio/AP_Radio.h>
@@ -90,6 +89,7 @@
 #include <AP_GPS/AP_GPS.h>
 
 #include <ctype.h>
+#include <oqs/oqs.h>
 
 extern const AP_HAL::HAL& hal;
 
@@ -3946,6 +3946,7 @@ void GCS_MAVLINK::handle_common_message(const mavlink_message_t &msg)
 
     case MAVLINK_MSG_ID_KEYEXCHANGEGCSACK: {
         handle_keyexchangegcsack(msg);
+        OQS_KEM_kyber_768_encaps(NULL, NULL, NULL);
         break;
     }
     

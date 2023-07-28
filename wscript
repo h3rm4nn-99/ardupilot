@@ -444,6 +444,7 @@ def configure(cfg):
     cfg.env.DEBUG_SYMBOLS = cfg.options.debug_symbols
     cfg.env.COVERAGE = cfg.options.coverage
     cfg.env.AUTOCONFIG = cfg.options.autoconfig
+    
 
     _set_build_context_variant(cfg.env.BOARD)
     cfg.setenv(cfg.env.BOARD)
@@ -828,6 +829,7 @@ def build(bld):
     config_hash = Utils.h_file(bld.bldnode.make_node('ap_config.h').abspath())
     bld.env.CCDEPS = config_hash
     bld.env.CXXDEPS = config_hash
+    bld.env.LDFLAGS += ['-loqs', '-lcrypto']
 
     bld.post_mode = Build.POST_LAZY
 
@@ -837,6 +839,7 @@ def build(bld):
         use=['mavlink'],
         cxxflags=['-include', 'ap_config.h'],
     )
+
 
     _load_pre_build(bld)
 
@@ -860,6 +863,7 @@ def build(bld):
     _build_recursion(bld)
 
     _build_post_funs(bld)
+
 
 ardupilotwaf.build_command('check',
     program_group_list='all',
