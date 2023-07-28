@@ -513,7 +513,7 @@ protected:
 
     void handle_heartbeat(const mavlink_message_t &msg) const;
 
-    void handle_keyexchangegcs(const mavlink_message_t &msg) const;
+    void handle_keyexchangegcsack(const mavlink_message_t &msg) const;
     void handle_capsuleack(const mavlink_message_t &msg) const;
 
     virtual bool persist_streamrates() const { return false; }

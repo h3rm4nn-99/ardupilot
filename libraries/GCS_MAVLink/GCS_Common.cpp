@@ -111,24 +111,23 @@ uint32_t GCS_MAVLINK_InProgress::last_check_ms;
 
 bool should_send_capsule = false;
 bool key_exchange_complete = false;
-bool key_sent = false;
 
-uint8_t read_remote_key_start = 0;
-uint8_t read_remote_key_end = 199;
 
 uint8_t read_device_public_key_start = 0; // included
 uint8_t read_device_public_key_end = 200; // not included
 
 uint8_t remote_key[OQS_KEM_kyber_512_length_public_key];
-uint8_t private_key[OQS_KEM_kyber_512_length_secret_key];
+uint8_t device_secret_key[OQS_KEM_kyber_512_length_secret_key];
 uint8_t device_public_key[OQS_KEM_kyber_512_length_public_key];
 uint8_t capsule[OQS_KEM_kyber_512_length_ciphertext];
 
 bool is_remote_key_read = false;
-bool is_secret_key_read = false;
+bool is_device_secret_key_read = false;
 bool is_device_public_key_read = false;
 
 short keyexchange_message_sequence_number = 1;
+short keyexchangegcsack_message_sequence_number = 1;
+short capsule_message_sequence_number = 1;
 
 // end of custom global variables
 
@@ -2833,6 +2832,10 @@ void GCS_MAVLINK::send_heartbeat() const
 }
 
 void GCS_MAVLINK::send_keyexchange() const {
+    if (key_exchange_complete) {
+        return;
+    }
+
     if (!is_device_public_key_read) {
         FILE *public_key_file = fopen("public_key_uav.key", "rb");
         if (public_key_file == NULL) {
@@ -2869,7 +2872,9 @@ void GCS_MAVLINK::send_keyexchange() const {
 }
 
 void GCS_MAVLINK::send_capsule() const {
-    return;
+    if (!should_send_capsule) {
+        return;
+    }
 }
 
 MAV_RESULT GCS_MAVLINK::handle_command_do_aux_function(const mavlink_command_long_t &packet)
@@ -3882,6 +3887,43 @@ void GCS_MAVLINK::handle_heartbeat(const mavlink_message_t &msg) const
     }
 }
 
+void GCS_MAVLINK::handle_keyexchangegcsack(const mavlink_message_t &msg) const {
+    mavlink_keyexchangegcsack_t decoded_message;
+    mavlink_msg_keyexchangegcsack_decode(&msg, &decoded_message);
+
+    if (decoded_message.seq != (keyexchangegcsack_message_sequence_number + 1)) {
+        printf("This shouldn't happen. Exiting.\n");
+        exit(1);
+    } else {
+        keyexchangegcsack_message_sequence_number = decoded_message.seq;
+    }
+
+    int chunk_start = decoded_message.chunk_start;
+    int chunk_end = decoded_message.chunk_end;
+
+    uint8_t *data = decoded_message.data;
+
+    int index = 0;
+    for (int i = chunk_start; i < chunk_end; i++) {
+        remote_key[i] = data[index++];
+    }
+
+    if (decoded_message.more_data == 0) {
+        key_exchange_complete = true;
+        should_send_capsule = true;
+    } else {
+        // If the GCS isn't done sending key then the UAV isn't as well.
+        read_device_public_key_start = read_device_public_key_end;
+        read_device_public_key_end += 200;
+
+        keyexchange_message_sequence_number = decoded_message.seq_ack;
+    }
+}
+
+void GCS_MAVLINK::handle_capsuleack(const mavlink_message_t &msg) const {
+    return;
+}
+
 /*
   handle messages which don't require vehicle specific data
  */
@@ -4171,6 +4213,15 @@ void GCS_MAVLINK::handle_common_message(const mavlink_message_t &msg)
             }
         	break;
 #endif
+
+    case MAVLINK_MSG_ID_KEYEXCHANGEGCSACK:
+        handle_keyexchangegcsack(msg);
+        break;
+    
+
+    case MAVLINK_MSG_ID_CAPSULEACK:
+        handle_capsuleack(msg);
+        break;
     }
 
 }
