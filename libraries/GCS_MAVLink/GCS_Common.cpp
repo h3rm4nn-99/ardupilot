@@ -65,6 +65,8 @@
 
 #include <stdio.h>
 
+#include <openssl/rand.h>
+
 #if HAL_RCINPUT_WITH_AP_RADIO
 #include <AP_Radio/AP_Radio.h>
 #include <AP_BoardConfig/AP_BoardConfig.h>
@@ -117,7 +119,7 @@ uint16_t read_device_public_key_start = 0; // included
 uint16_t read_device_public_key_end = 200; // not included
 
 uint16_t read_capsule_start = 0; // included
-uint16_t read_capsule_end = 200; // not included
+uint16_t read_capsule_end = 192; // not included
 
 
 uint8_t remote_key[OQS_KEM_kyber_512_length_public_key];
@@ -134,6 +136,8 @@ bool is_capsule_generated = false;
 short keyexchange_message_sequence_number = 1;
 short keyexchangegcsack_message_sequence_number = 1;
 short capsule_message_sequence_number = 1;
+short capsuleack_message_sequence_number = 1;
+
 
 // end of custom global variables
 
@@ -2882,6 +2886,46 @@ void GCS_MAVLINK::send_capsule() const {
         return;
     }
 
+    if (!is_capsule_generated) {
+
+        /* first, let's generate the shared secret with OpenSSL ...
+        libcrypto is already included so no need to customize wscript further */
+
+        uint8_t key[OQS_KEM_kyber_512_length_shared_secret];
+        if (!RAND_bytes(key, sizeof(key))) { // https://www.openssl.org/docs/man1.0.2/man3/RAND_bytes.html
+            printf("Not enough randomness, quitting.\n");
+            exit(-1);
+        }
+
+        // ... then, let's encaps it
+
+        if (OQS_KEM_kyber_512_encaps(capsule, key, remote_key) != OQS_SUCCESS) {
+            printf("Failed to encaps, quitting.\n");
+            exit(-1);
+        }
+
+        is_capsule_generated = true;
+    } else {
+        uint8_t chunk[192];
+        int index = 0;
+
+        for (int i = read_capsule_start; i < read_capsule_end; i++) {
+            chunk[index++] = capsule[i];
+        }
+
+        short more_data = (read_capsule_end == (uint16_t) OQS_KEM_kyber_512_length_ciphertext) ? 0 : 1;
+
+
+        mavlink_msg_capsule_send(
+            chan,
+            capsule_message_sequence_number,
+            read_capsule_start,
+            read_capsule_end,
+            more_data,
+            chunk            
+        );
+    }
+
     
 }
 
@@ -3929,7 +3973,24 @@ void GCS_MAVLINK::handle_keyexchangegcsack(const mavlink_message_t &msg) const {
 }
 
 void GCS_MAVLINK::handle_capsuleack(const mavlink_message_t &msg) const {
-    return;
+    mavlink_capsuleack_t decoded_message;
+    mavlink_msg_capsuleack_decode(&msg, &decoded_message);
+
+    if (decoded_message.seq != (capsuleack_message_sequence_number + 1)) {
+        printf("This shouldn't happen. Exiting.\n");
+        exit(1);
+    } else {
+
+        if (read_capsule_end == OQS_KEM_kyber_512_length_ciphertext) {
+            should_send_capsule = false;
+            // we are done.
+        } else {
+            read_capsule_start = read_capsule_end;
+            read_capsule_end += 192;
+
+            capsuleack_message_sequence_number = decoded_message.seq;
+        }
+    }
 }
 
 /*
