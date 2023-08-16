@@ -115,9 +115,6 @@ bool should_send_capsule = false;
 bool key_exchange_complete = false;
 
 
-uint16_t read_device_public_key_start = 0; // included
-uint16_t read_device_public_key_end = 200; // not included
-
 uint16_t read_capsule_start = 0; // included
 uint16_t read_capsule_end = 192; // not included
 
@@ -127,16 +124,23 @@ uint8_t device_secret_key[OQS_KEM_kyber_512_length_secret_key];
 uint8_t device_public_key[OQS_KEM_kyber_512_length_public_key];
 uint8_t capsule[OQS_KEM_kyber_512_length_ciphertext];
 
+uint8_t key[OQS_KEM_kyber_512_length_shared_secret];
+
 bool is_remote_key_read = false;
 bool is_device_secret_key_read = false;
-bool is_device_public_key_read = false;
 
 bool is_capsule_generated = false;
 
-short keyexchange_message_sequence_number = 1;
-short keyexchangegcsack_message_sequence_number = 1;
+bool is_iv_set = false;
+uint8_t iv[128];
+
+uint16_t request_remote_key_start = 0;
+uint16_t request_remote_key_end = 200;
+
 short capsule_message_sequence_number = 1;
 short capsuleack_message_sequence_number = 1;
+
+uint8_t keyexchange_seq = 1;
 
 
 // end of custom global variables
@@ -2846,39 +2850,19 @@ void GCS_MAVLINK::send_keyexchange() const {
         return;
     }
 
-    if (!is_device_public_key_read) {
-        FILE *public_key_file = fopen("public_key_uav.key", "rb");
-        if (public_key_file == NULL) {
-            printf("Error opening file. Exiting\n");
-            exit(-1);
-        } else {
-            if (fread(device_public_key, 800, sizeof(uint8_t), public_key_file) != OQS_KEM_kyber_512_length_public_key) {
-                printf("Error reading device public key. Exiting\n");
-                exit(-1);
-            }
-
-            is_device_public_key_read = true;
-        }
-    } else {
-        uint8_t chunk[200];
-        int chunk_index = 0;
-        for (int i = read_device_public_key_start; i < read_device_public_key_end; i++) {
-            chunk[chunk_index++] = device_public_key[i];
-        }
-
-        int chunk_start = read_device_public_key_start;
-        int chunk_end = read_device_public_key_end;
-
-        short more_data = (read_device_public_key_end == (uint16_t) OQS_KEM_kyber_512_length_public_key) ? 0 : 1;
-
-        mavlink_msg_keyexchange_send(chan, 
-                                    keyexchange_message_sequence_number, 
-                                    chunk_start, 
-                                    chunk_end, 
-                                    more_data, 
-                                    chunk);
-        
+    if (is_iv_set == false) {
+        RAND_bytes(iv, 128);
+        is_iv_set = 1;
     }
+
+    mavlink_msg_keyexchange_send(
+        chan,
+        keyexchange_seq++,
+        request_remote_key_start,
+        request_remote_key_end,
+        iv
+    );
+        
 }
 
 void GCS_MAVLINK::send_capsule() const {
@@ -2888,21 +2872,25 @@ void GCS_MAVLINK::send_capsule() const {
 
     if (!is_capsule_generated) {
 
-        /* first, let's generate the shared secret with OpenSSL ...
-        libcrypto is already included so no need to customize wscript further */
-
-        uint8_t key[OQS_KEM_kyber_512_length_shared_secret];
-        if (!RAND_bytes(key, sizeof(key))) { // https://www.openssl.org/docs/man1.0.2/man3/RAND_bytes.html
-            printf("Not enough randomness, quitting.\n");
-            exit(-1);
-        }
-
-        // ... then, let's encaps it
-
+        OQS_init();
         if (OQS_KEM_kyber_512_encaps(capsule, key, remote_key) != OQS_SUCCESS) {
             printf("Failed to encaps, quitting.\n");
             exit(-1);
+        } else {
+            printf("Generated secret key:\n");
+            for (int i = 0; i < OQS_KEM_kyber_512_length_shared_secret; i++) {
+                printf("%u ", key[i]);
+            }
+
+            printf("\n\n\n\n");
+            printf("Generated capsule, bytes:\n");
+            for (int i = 0; i < OQS_KEM_kyber_512_length_ciphertext; i++) {
+                printf("%u ", capsule[i]);
+            }
+            printf("\n");
         }
+
+        OQS_destroy();
 
         is_capsule_generated = true;
     } else {
@@ -2913,8 +2901,14 @@ void GCS_MAVLINK::send_capsule() const {
             chunk[index++] = capsule[i];
         }
 
-        short more_data = (read_capsule_end == (uint16_t) OQS_KEM_kyber_512_length_ciphertext) ? 0 : 1;
+        printf("Current chunk: start %d, end %d", read_capsule_start, read_capsule_end);
+        for (int i = 0; i < 192; i++) {
+            printf("%u ", chunk[i]);
+        }
 
+        printf("\n");
+
+        short more_data = (read_capsule_end == OQS_KEM_kyber_512_length_ciphertext) ? 0 : 1;
 
         mavlink_msg_capsule_send(
             chan,
@@ -3943,15 +3937,16 @@ void GCS_MAVLINK::handle_keyexchangegcsack(const mavlink_message_t &msg) const {
     mavlink_keyexchangegcsack_t decoded_message;
     mavlink_msg_keyexchangegcsack_decode(&msg, &decoded_message);
 
-    if (decoded_message.seq != (keyexchangegcsack_message_sequence_number + 1)) {
-        printf("This shouldn't happen. Exiting.\n");
-        exit(1);
-    } else {
-        keyexchangegcsack_message_sequence_number = decoded_message.seq;
+    if (decoded_message.seq_ack != keyexchange_seq) {
+        printf("Messaggio fuori sequenza. Interruzione della comunicazione.\n");
+        printf("Ho ricevuto %d\n ma mi aspettavo %d\n", decoded_message.seq_ack, keyexchange_seq + 1);
+        exit(-1);
     }
 
     int chunk_start = decoded_message.chunk_start;
     int chunk_end = decoded_message.chunk_end;
+
+    printf("KeyExchange ack got. Chunks: %d start %d end\n", chunk_start, chunk_end);
 
     uint8_t *data = decoded_message.data;
 
@@ -3964,11 +3959,8 @@ void GCS_MAVLINK::handle_keyexchangegcsack(const mavlink_message_t &msg) const {
         key_exchange_complete = true;
         should_send_capsule = true;
     } else {
-        // If the GCS isn't done sending key then the UAV isn't as well.
-        read_device_public_key_start = read_device_public_key_end;
-        read_device_public_key_end += 200;
-
-        keyexchange_message_sequence_number = decoded_message.seq_ack;
+        request_remote_key_start = request_remote_key_end;
+        request_remote_key_end += 200;
     }
 }
 
@@ -3976,19 +3968,22 @@ void GCS_MAVLINK::handle_capsuleack(const mavlink_message_t &msg) const {
     mavlink_capsuleack_t decoded_message;
     mavlink_msg_capsuleack_decode(&msg, &decoded_message);
 
-    if (decoded_message.seq != (capsuleack_message_sequence_number + 1)) {
+    if (decoded_message.ack != capsule_message_sequence_number + 1) {
         printf("This shouldn't happen. Exiting.\n");
+        printf("Incoming sequence number: %d while expected sequence number was %d\n", decoded_message.ack, capsuleack_message_sequence_number + 1);
         exit(1);
     } else {
 
         if (read_capsule_end == OQS_KEM_kyber_512_length_ciphertext) {
             should_send_capsule = false;
+            printf("Successfully sent the capsule.\n");
+            set_session_key(key);
             // we are done.
         } else {
             read_capsule_start = read_capsule_end;
             read_capsule_end += 192;
 
-            capsuleack_message_sequence_number = decoded_message.seq;
+            capsule_message_sequence_number = decoded_message.ack;
         }
     }
 }
@@ -4007,7 +4002,6 @@ void GCS_MAVLINK::handle_common_message(const mavlink_message_t &msg)
 
     case MAVLINK_MSG_ID_KEYEXCHANGEGCSACK: {
         handle_keyexchangegcsack(msg);
-        OQS_KEM_kyber_768_encaps(NULL, NULL, NULL);
         break;
     }
     
